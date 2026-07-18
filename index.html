@@ -705,7 +705,7 @@
 // ═══════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════
-const API = 'https://nexus-bot-v2-iysv.onrender.com/api';
+const API = 'https://nexus-bot-v2.onrender.com/api';
 const PLAN_PRICES = {
   basic: {inr: 999, usd: 12},
   pro:   {inr: 2499, usd: 30},
@@ -912,22 +912,24 @@ async function loadCharts() {
     </div>`).join('');
 
   // Load data for each pair
+  const cgIds = ['bitcoin','ethereum','binancecoin','solana','ripple'];
   for (let i = 0; i < CHART_PAIRS.length; i++) {
     try {
-      const sym = CHART_PAIRS[i];
-      const [klinesRes, tickerRes] = await Promise.all([
-        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=40`),
-        fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${sym}`)
+      const cgId = cgIds[i];
+      const [ohlcRes, priceRes] = await Promise.all([
+        fetch(`https://api.coingecko.com/api/v3/coins/${cgId}/ohlc?vs_currency=usd&days=2`),
+        fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=usd&include_24hr_change=true`)
       ]);
-      const klines = await klinesRes.json();
-      const ticker = await tickerRes.json();
-      const price = parseFloat(ticker.lastPrice);
-      const chg   = parseFloat(ticker.priceChangePercent);
+      const ohlc = await ohlcRes.json();
+      const priceData = await priceRes.json();
+      const price = priceData[cgId]?.usd || 0;
+      const chg = priceData[cgId]?.usd_24h_change || 0;
       document.getElementById(`chart-price-${i}`).textContent = '$' + price.toLocaleString(undefined,{maximumFractionDigits:2});
       const chgEl = document.getElementById(`chart-chg-${i}`);
       chgEl.textContent = (chg >= 0 ? '▲ +' : '▼ ') + chg.toFixed(2) + '%';
       chgEl.style.color = chg >= 0 ? 'var(--success)' : 'var(--danger)';
-      // Size canvas to actual pixel dimensions AFTER DOM renders
+      // Convert CoinGecko OHLC to klines format
+      const klines = ohlc.map(c => [c[0],c[1],c[2],c[3],c[4],0]);
       requestAnimationFrame(() => {
         const wrap = document.getElementById(`chart-wrap-${i}`);
         const canvas = document.getElementById(`chart-${i}`);
@@ -937,33 +939,32 @@ async function loadCharts() {
           drawMiniCandles(canvas, klines);
         }
       });
-    } catch(e) { console.warn('Chart error', sym, e); }
+    } catch(e) { console.warn('Chart error', CHART_PAIRS[i], e); }
   }
 }
 
 async function loadGainersLosers() {
   try {
-    const res = await fetch('https://api.binance.com/api/v3/ticker/24hr');
+    const res = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h');
     const data = await res.json();
-    allMarketData = data.filter(t => t.symbol.endsWith('USDT') && parseFloat(t.quoteVolume) > 1000000);
-    const sorted = [...allMarketData].sort((a,b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
+    allMarketData = data;
+    const sorted = [...data].sort((a,b) => b.price_change_percentage_24h - a.price_change_percentage_24h);
     const gainers = sorted.slice(0, 5);
-    const losers  = sorted.slice(-5).reverse();
+    const losers  = sorted.filter(t => t.price_change_percentage_24h < 0).slice(-5).reverse();
 
     const renderRow = (t, color) => {
-      const chg = parseFloat(t.priceChangePercent);
-      const sym = t.symbol.replace('USDT','');
+      const chg = t.price_change_percentage_24h || 0;
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
-        <div style="font-weight:600;font-size:13px">${sym}/USDT</div>
+        <div style="font-weight:600;font-size:13px">${t.symbol.toUpperCase()}/USDT</div>
         <div style="text-align:right">
-          <div style="font-size:13px;font-family:var(--mono)">$${parseFloat(t.lastPrice).toLocaleString(undefined,{maximumFractionDigits:4})}</div>
+          <div style="font-size:13px;font-family:var(--mono)">$${t.current_price.toLocaleString(undefined,{maximumFractionDigits:4})}</div>
           <div style="font-size:11px;color:${color}">${chg >= 0 ? '▲ +' : '▼ '}${chg.toFixed(2)}%</div>
         </div>
       </div>`;
     };
 
     document.getElementById('topGainersList').innerHTML = gainers.map(t => renderRow(t,'var(--success)')).join('');
-    document.getElementById('topLosersList').innerHTML  = losers.map(t  => renderRow(t,'var(--danger)')).join('');
+    document.getElementById('topLosersList').innerHTML  = losers.map(t => renderRow(t,'var(--danger)')).join('');
     renderMarketTable(allMarketData);
   } catch(e) { console.warn('Gainers error', e); }
 }
@@ -971,13 +972,13 @@ async function loadGainersLosers() {
 function renderMarketTable(data) {
   const wrap = document.getElementById('marketTableWrap');
   if (!data.length) { wrap.innerHTML = '<div class="loading">No data</div>'; return; }
-  const rows = data.slice(0, 200).map(t => {
-    const chg = parseFloat(t.priceChangePercent);
-    const sym = t.symbol.replace('USDT','');
-    const vol = (parseFloat(t.quoteVolume)/1e6).toFixed(1);
+  const rows = data.slice(0, 100).map(t => {
+    const chg = t.price_change_percentage_24h || 0;
+    const sym = (t.symbol || '').toUpperCase();
+    const vol = ((t.total_volume||0)/1e6).toFixed(1);
     return `<tr>
       <td><strong>${sym}</strong><span style="color:var(--text3);font-size:11px">/USDT</span></td>
-      <td class="mono">$${parseFloat(t.lastPrice).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
+      <td class="mono">$${(t.current_price||0).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
       <td style="color:${chg>=0?'var(--success)':'var(--danger)'}">${chg>=0?'▲ +':'▼ '}${chg.toFixed(2)}%</td>
       <td class="mono" style="font-size:12px;color:var(--text3)">$${vol}M</td>
     </tr>`;
@@ -991,7 +992,7 @@ function renderMarketTable(data) {
 
 function filterMarket() {
   const q = document.getElementById('marketSearch').value.toUpperCase();
-  const filtered = allMarketData.filter(t => t.symbol.includes(q));
+  const filtered = allMarketData.filter(t => (t.symbol||'').toUpperCase().includes(q) || (t.name||'').toUpperCase().includes(q));
   renderMarketTable(filtered);
 }
 
