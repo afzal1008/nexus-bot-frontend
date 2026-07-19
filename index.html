@@ -778,12 +778,16 @@ async function apiCall(endpoint, method='GET', body=null, auth=true, attempt=1) 
 }
 
 async function doLogin() {
-  const email = document.getElementById('loginEmail').value;
+  const email = document.getElementById('loginEmail').value.trim();
   const pass  = document.getElementById('loginPassword').value;
   const alertEl = document.getElementById('loginAlert');
   alertEl.innerHTML = '';
   if(!email || !pass) return alertEl.innerHTML = '<div class="alert alert-error">Please fill all fields</div>';
+  alertEl.innerHTML = '<div class="alert alert-info">⏳ Signing in... please wait up to 60 seconds on first load.</div>';
   try {
+    // Wake server first
+    try { await fetch(API.replace('/api','') + '/health'); } catch(e) {}
+    await new Promise(r => setTimeout(r, 2000));
     const data = await apiCall('/auth/login','POST',{email,password:pass},false);
     token = data.access_token;
     localStorage.setItem('nexus_token', token);
