@@ -904,7 +904,6 @@ function drawMiniCandles(canvas, candles) {
 
 async function loadCharts() {
   const grid = document.getElementById('chartsGrid');
-  // Build chart containers first
   grid.innerHTML = CHART_PAIRS.map((sym, i) => `
     <div style="background:var(--bg3);border-radius:10px;padding:12px;border:1px solid var(--border)">
       <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:0.5px;margin-bottom:2px">${CHART_LABELS[i]}</div>
@@ -915,31 +914,40 @@ async function loadCharts() {
       </div>
     </div>`).join('');
 
-  // Load data for each pair
-  const cgIds = ['bitcoin','ethereum','binancecoin','solana','ripple'];
-  // Fetch all prices in one call to avoid rate limits
-  const allPrices = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin,solana,ripple&vs_currencies=usd&include_24hr_change=true`)
-    .then(r => r.json()).catch(() => ({}));
+  const krakenPairs = ['XBTUSD','ETHUSD','BNBUSD','SOLUSD','XRPUSD'];
+
   for (let i = 0; i < CHART_PAIRS.length; i++) {
     try {
-      const cgId = cgIds[i];
-      // Add delay between requests to avoid rate limit
-      await new Promise(r => setTimeout(r, i * 1200));
-      const ohlcRes = await fetch(`https://api.coingecko.com/api/v3/coins/${cgId}/ohlc?vs_currency=usd&days=2`);
-      const ohlc = await ohlcRes.json();
-      const priceData = allPrices;
-      const price = priceData[cgId]?.usd || 0;
-      const chg = priceData[cgId]?.usd_24h_change || 0;
+      const kp = krakenPairs[i];
+      // Fetch OHLC from Kraken - free, no limits
+      const [ohlcRes, tickerRes] = await Promise.all([
+        fetch(`https://api.kraken.com/0/public/OHLC?pair=${kp}&interval=60`),
+        fetch(`https://api.kraken.com/0/public/Ticker?pair=${kp}`)
+      ]);
+      const ohlcData = await ohlcRes.json();
+      const tickerData = await tickerRes.json();
+
+      // Get OHLC candles
+      const resultKey = Object.keys(ohlcData.result||{}).find(k => k !== 'last');
+      const raw = resultKey ? ohlcData.result[resultKey] : [];
+      const klines = raw.slice(-40).map(c => [+c[0],+c[1],+c[2],+c[3],+c[4],+c[6]]);
+
+      // Get price
+      const tKey = Object.keys(tickerData.result||{})[0];
+      const ticker = tickerData.result?.[tKey];
+      const price = ticker ? parseFloat(ticker.c[0]) : 0;
+      const open24 = ticker ? parseFloat(ticker.o) : price;
+      const chg = open24 > 0 ? ((price - open24) / open24 * 100) : 0;
+
       document.getElementById(`chart-price-${i}`).textContent = '$' + price.toLocaleString(undefined,{maximumFractionDigits:2});
       const chgEl = document.getElementById(`chart-chg-${i}`);
       chgEl.textContent = (chg >= 0 ? '▲ +' : '▼ ') + chg.toFixed(2) + '%';
       chgEl.style.color = chg >= 0 ? 'var(--success)' : 'var(--danger)';
-      // Convert CoinGecko OHLC to klines format
-      const klines = ohlc.map(c => [c[0],c[1],c[2],c[3],c[4],0]);
+
       requestAnimationFrame(() => {
         const wrap = document.getElementById(`chart-wrap-${i}`);
         const canvas = document.getElementById(`chart-${i}`);
-        if (wrap && canvas) {
+        if (wrap && canvas && klines.length > 0) {
           canvas.width  = wrap.offsetWidth  || 200;
           canvas.height = wrap.offsetHeight || 70;
           drawMiniCandles(canvas, klines);
