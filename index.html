@@ -705,7 +705,7 @@
 // ═══════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════
-const API = 'https://nexus-bot-v2-iysv.onrender.com/api';
+const API = 'https://nexus-bot-v2.onrender.com/api';
 const PLAN_PRICES = {
   basic: {inr: 999, usd: 12},
   pro:   {inr: 2499, usd: 30},
@@ -917,15 +917,17 @@ async function loadCharts() {
 
   // Load data for each pair
   const cgIds = ['bitcoin','ethereum','binancecoin','solana','ripple'];
+  // Fetch all prices in one call to avoid rate limits
+  const allPrices = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin,solana,ripple&vs_currencies=usd&include_24hr_change=true`)
+    .then(r => r.json()).catch(() => ({}));
   for (let i = 0; i < CHART_PAIRS.length; i++) {
     try {
       const cgId = cgIds[i];
-      const [ohlcRes, priceRes] = await Promise.all([
-        fetch(`https://api.coingecko.com/api/v3/coins/${cgId}/ohlc?vs_currency=usd&days=2`),
-        fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=usd&include_24hr_change=true`)
-      ]);
+      // Add delay between requests to avoid rate limit
+      await new Promise(r => setTimeout(r, i * 1200));
+      const ohlcRes = await fetch(`https://api.coingecko.com/api/v3/coins/${cgId}/ohlc?vs_currency=usd&days=2`);
       const ohlc = await ohlcRes.json();
-      const priceData = await priceRes.json();
+      const priceData = allPrices;
       const price = priceData[cgId]?.usd || 0;
       const chg = priceData[cgId]?.usd_24h_change || 0;
       document.getElementById(`chart-price-${i}`).textContent = '$' + price.toLocaleString(undefined,{maximumFractionDigits:2});
