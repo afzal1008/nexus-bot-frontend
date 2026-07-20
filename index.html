@@ -703,6 +703,21 @@
 
 <script>
 // ═══════════════════════════════════════════════════════
+// SERVER WAKEUP - Prevents Render free tier sleep issues
+// ═══════════════════════════════════════════════════════
+async function wakeServer() {
+  try { 
+    await fetch('https://nexus-bot-v2-iysv.onrender.com/health');
+  } catch(e) {}
+}
+// Wake on load
+window.addEventListener('load', async () => {
+  wakeServer();
+  // Keep server awake every 14 minutes
+  setInterval(wakeServer, 14 * 60 * 1000);
+});
+
+// ═══════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════
 const API = 'https://nexus-bot-v2.onrender.com/api';
@@ -783,11 +798,14 @@ async function doLogin() {
   const alertEl = document.getElementById('loginAlert');
   alertEl.innerHTML = '';
   if(!email || !pass) return alertEl.innerHTML = '<div class="alert alert-error">Please fill all fields</div>';
-  alertEl.innerHTML = '<div class="alert alert-info">⏳ Signing in... please wait up to 60 seconds on first load.</div>';
+  alertEl.innerHTML = '<div class="alert alert-info">⏳ Connecting to server... please wait...</div>';
   try {
-    // Wake server first
-    try { await fetch(API.replace('/api','') + '/health'); } catch(e) {}
-    await new Promise(r => setTimeout(r, 2000));
+    // Wake server and wait
+    for(let w = 0; w < 3; w++) {
+      try { await fetch(API.replace('/api','') + '/health'); break; } catch(e) {}
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    await new Promise(r => setTimeout(r, 1000));
     const data = await apiCall('/auth/login','POST',{email,password:pass},false);
     token = data.access_token;
     localStorage.setItem('nexus_token', token);
