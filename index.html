@@ -358,10 +358,11 @@
         <div class="page-subtitle">Real-time bot performance overview</div>
       </div>
       <div class="stats-grid">
-        <div class="stat-card"><div class="stat-label">Total Signals</div><div class="stat-value blue" id="stat-signals">—</div><div class="stat-sub">Last 30 days</div></div>
+        <div class="stat-card"><div class="stat-label">Total Signals</div><div class="stat-value blue" id="stat-signals">—</div><div class="stat-sub">Last 24 hours</div></div>
         <div class="stat-card"><div class="stat-label">Executed Trades</div><div class="stat-value" id="stat-trades">—</div><div class="stat-sub">Successful orders</div></div>
         <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value green" id="stat-winrate">—</div><div class="stat-sub">Profitable trades</div></div>
         <div class="stat-card"><div class="stat-label">Total P&L</div><div class="stat-value" id="stat-pnl">—</div><div class="stat-sub">USDT</div></div>
+        <div class="stat-card"><div class="stat-label">Paper Balance</div><div class="stat-value" id="stat-balance">—</div><div class="stat-sub">Virtual USDT</div></div>
       </div>
 
       <!-- Top Gainers / Losers -->
@@ -440,7 +441,6 @@
               <option value="XRP/USDT">XRP/USDT</option>
               <option value="ADA/USDT">ADA/USDT</option>
               <option value="DOGE/USDT">DOGE/USDT</option>
-              <option value="MATIC/USDT">MATIC/USDT</option>
               <option value="AVAX/USDT">AVAX/USDT</option>
               <option value="DOT/USDT">DOT/USDT</option>
               <option value="LINK/USDT">LINK/USDT</option>
@@ -448,6 +448,12 @@
               <option value="TRX/USDT">TRX/USDT</option>
               <option value="SHIB/USDT">SHIB/USDT</option>
               <option value="UNI/USDT">UNI/USDT</option>
+              <option value="ATOM/USDT">ATOM/USDT</option>
+              <option value="NEAR/USDT">NEAR/USDT</option>
+              <option value="FTM/USDT">FTM/USDT</option>
+              <option value="SAND/USDT">SAND/USDT</option>
+              <option value="MANA/USDT">MANA/USDT</option>
+              <option value="APE/USDT">APE/USDT</option>
             </select>
           </div>
           <div>
@@ -1048,6 +1054,9 @@ async function loadDashboard() {
     const data = await apiCall('/dashboard/summary');
     document.getElementById('stat-signals').textContent = data.total_signals;
     document.getElementById('stat-trades').textContent  = data.executed_trades;
+    // Calculate paper balance: start $1000 + P&L
+    const balance = 1000 + (data.total_pnl_usdt || 0);
+    document.getElementById('stat-balance').textContent = '$' + balance.toFixed(2);
     document.getElementById('stat-winrate').textContent = data.win_rate_pct + '%';
     const pnl = data.total_pnl_usdt;
     const pnlEl = document.getElementById('stat-pnl');
