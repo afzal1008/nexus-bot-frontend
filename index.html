@@ -359,10 +359,10 @@
       </div>
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-label">Total Signals</div><div class="stat-value blue" id="stat-signals">—</div><div class="stat-sub">Last 24 hours</div></div>
-        <div class="stat-card"><div class="stat-label">Executed Trades</div><div class="stat-value" id="stat-trades">—</div><div class="stat-sub">Successful orders</div></div>
-        <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value green" id="stat-winrate">—</div><div class="stat-sub">Profitable trades</div></div>
-        <div class="stat-card"><div class="stat-label">Total P&L</div><div class="stat-value" id="stat-pnl">—</div><div class="stat-sub">USDT</div></div>
-        <div class="stat-card"><div class="stat-label">Paper Balance</div><div class="stat-value" id="stat-balance">—</div><div class="stat-sub">Virtual USDT</div></div>
+        <div class="stat-card"><div class="stat-label">Executed Trades</div><div class="stat-value" id="stat-trades">—</div><div class="stat-sub">Last 24 hours</div></div>
+        <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value green" id="stat-winrate">—</div><div class="stat-sub">Last 24 hours</div></div>
+        <div class="stat-card"><div class="stat-label">Total P&L</div><div class="stat-value" id="stat-pnl">—</div><div class="stat-sub">All time USDT</div></div>
+        <div class="stat-card"><div class="stat-label">Paper Balance</div><div class="stat-value" id="stat-balance">—</div><div class="stat-sub">$1000 + P&L</div></div>
       </div>
 
       <!-- Top Gainers / Losers -->
@@ -1054,9 +1054,14 @@ async function loadDashboard() {
     const data = await apiCall('/dashboard/summary');
     document.getElementById('stat-signals').textContent = data.total_signals;
     document.getElementById('stat-trades').textContent  = data.executed_trades;
-    // Calculate paper balance: start $1000 + P&L
-    const balance = 1000 + (data.total_pnl_usdt || 0);
-    document.getElementById('stat-balance').textContent = '$' + balance.toFixed(2);
+    // Paper balance from server
+    document.getElementById('stat-balance').textContent = '$' + (data.paper_balance || 1000).toFixed(2);
+    // P&L show 24h + all time
+    const pnlEl = document.getElementById('stat-pnl');
+    const pnl24h = data.pnl_24h || 0;
+    const pnlAll = data.total_pnl_usdt || 0;
+    pnlEl.textContent = (pnlAll >= 0 ? '+' : '') + pnlAll.toFixed(2);
+    pnlEl.style.color = pnlAll >= 0 ? 'var(--success)' : 'var(--danger)';
     document.getElementById('stat-winrate').textContent = data.win_rate_pct + '%';
     const pnl = data.total_pnl_usdt;
     const pnlEl = document.getElementById('stat-pnl');
@@ -1108,8 +1113,17 @@ async function loadSignals() {
     const res = await apiCall('/signals/live');
     const trades = res.signals || [];
     if(!trades.length) { el.innerHTML='<div class="loading">No signals yet — bot is evaluating markets. Check back in 30 seconds.</div>'; return; }
-    const actionable = trades.filter(t => t.signal === 'buy' || t.signal === 'sell');
-    const holds = trades.filter(t => t.signal === 'hold');
+    // Show only LATEST signal per coin - no duplicates
+    const seen = new Set();
+    const uniqueTrades = [];
+    for(const t of trades) {
+      if(!seen.has(t.symbol)) {
+        seen.add(t.symbol);
+        uniqueTrades.push(t);
+      }
+    }
+    const actionable = uniqueTrades.filter(t => t.signal === 'buy' || t.signal === 'sell');
+    const holds = uniqueTrades.filter(t => t.signal === 'hold');
     const displayTrades = [...actionable, ...holds].slice(0, 20);
     el.innerHTML = (actionable.length > 0 ? `
       <div style="background:rgba(0,212,170,0.07);border:1px solid rgba(0,212,170,0.2);border-radius:8px;padding:12px 16px;margin-bottom:16px">
