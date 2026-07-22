@@ -365,7 +365,7 @@
         <div class="stat-card"><div class="stat-label">Executed Trades</div><div class="stat-value" id="stat-trades">—</div><div class="stat-sub">Last 24 hours</div></div>
         <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value green" id="stat-winrate">—</div><div class="stat-sub">Last 24 hours</div></div>
         <div class="stat-card"><div class="stat-label">Total P&L</div><div class="stat-value" id="stat-pnl">—</div><div class="stat-sub">All time USDT</div></div>
-        <div class="stat-card"><div class="stat-label">Paper Balance</div><div class="stat-value" id="stat-balance">—</div><div class="stat-sub">$1000 + P&L</div></div>
+        <div class="stat-card"><div class="stat-label">Paper Balance</div><div class="stat-value" id="stat-balance">—</div><div class="stat-sub">$10000 Wallet</div></div>
       </div>
 
       <!-- Top Gainers / Losers -->
@@ -1058,7 +1058,7 @@ async function loadDashboard() {
     document.getElementById('stat-signals').textContent = data.total_signals;
     document.getElementById('stat-trades').textContent  = data.executed_trades;
     // Paper balance from server
-    document.getElementById('stat-balance').textContent = '$' + (data.paper_balance || 1000).toFixed(2);
+    document.getElementById('stat-balance').textContent = '$' + (data.paper_balance_usdt !== undefined ? data.paper_balance_usdt : 10000).toFixed(2);
     // P&L show 24h + all time
     const pnlEl = document.getElementById('stat-pnl');
     const pnl24h = data.pnl_24h || 0;
