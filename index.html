@@ -1064,7 +1064,6 @@ async function loadDashboard() {
     pnlEl.style.color = pnlAll >= 0 ? 'var(--success)' : 'var(--danger)';
     document.getElementById('stat-winrate').textContent = data.win_rate_pct + '%';
     const pnl = data.total_pnl_usdt;
-    const pnlEl = document.getElementById('stat-pnl');
     pnlEl.textContent = (pnl >= 0 ? '+' : '') + pnl.toFixed(2);
     pnlEl.className = 'stat-value ' + (pnl >= 0 ? 'green' : 'red');
 
