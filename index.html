@@ -239,6 +239,7 @@
   .indicator-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
   .indicator-value { font-size: 16px; font-weight: 600; font-family: var(--mono); }
 </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -1016,7 +1017,7 @@ async function loadGainersLosers() {
 
     const renderRow = (t, color) => {
       const chg = t.price_change_percentage_24h || 0;
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
+      return `<div onclick="showCoinChart('${t.id}','${t.symbol.toUpperCase()}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
         <div style="font-weight:600;font-size:13px">${t.symbol.toUpperCase()}/USDT</div>
         <div style="text-align:right">
           <div style="font-size:13px;font-family:var(--mono)">$${t.current_price.toLocaleString(undefined,{maximumFractionDigits:4})}</div>
@@ -1029,6 +1030,79 @@ async function loadGainersLosers() {
     document.getElementById('topLosersList').innerHTML  = losers.map(t => renderRow(t,'var(--danger)')).join('');
     renderMarketTable(allMarketData);
   } catch(e) { console.warn('Gainers error', e); }
+}
+
+// ═══════════════════════════════════════════════════════
+// COIN CHART MODAL (click a Top Gainer / Top Loser row)
+// ═══════════════════════════════════════════════════════
+let coinChartInstance = null;
+
+async function showCoinChart(coinId, symbolLabel) {
+  const modal = document.getElementById('coinChartModal');
+  const titleEl = document.getElementById('coinChartTitle');
+  const loadingEl = document.getElementById('coinChartLoading');
+  const canvas = document.getElementById('coinChartCanvas');
+
+  titleEl.textContent = symbolLabel + '/USDT — 7 Day Chart';
+  loadingEl.style.display = 'block';
+  loadingEl.textContent = 'Loading chart...';
+  loadingEl.style.color = 'var(--text3)';
+  canvas.style.display = 'none';
+  modal.style.display = 'flex';
+
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=7`);
+    if (!res.ok) throw new Error('Chart data unavailable for this coin');
+    const data = await res.json();
+    const prices = data.prices || [];
+    if (!prices.length) throw new Error('No price history available');
+
+    const labels = prices.map(p => new Date(p[0]).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'2-digit'}));
+    const values = prices.map(p => p[1]);
+    const isUp = values[values.length-1] >= values[0];
+
+    if (coinChartInstance) coinChartInstance.destroy();
+
+    loadingEl.style.display = 'none';
+    canvas.style.display = 'block';
+
+    const ctx = canvas.getContext('2d');
+    coinChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: symbolLabel,
+          data: values,
+          borderColor: isUp ? '#22c55e' : '#ef4444',
+          backgroundColor: isUp ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 6, color: '#888', font: { size: 10 } }, grid: { display: false } },
+          y: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' } }
+        }
+      }
+    });
+  } catch(e) {
+    loadingEl.style.display = 'block';
+    loadingEl.style.color = 'var(--danger)';
+    loadingEl.textContent = '❌ ' + e.message;
+    canvas.style.display = 'none';
+  }
+}
+
+function closeCoinChart() {
+  document.getElementById('coinChartModal').style.display = 'none';
+  if (coinChartInstance) { coinChartInstance.destroy(); coinChartInstance = null; }
 }
 
 function renderMarketTable(data) {
@@ -1546,5 +1620,17 @@ async function init() {
 }
 init();
 </script>
+<div id="coinChartModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this) closeCoinChart()">
+  <div style="background:var(--card,#151a26);border:1px solid var(--border,#2a3040);border-radius:14px;padding:22px;width:100%;max-width:560px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div id="coinChartTitle" style="font-size:16px;font-weight:700;color:var(--text1,#fff)"></div>
+      <button onclick="closeCoinChart()" style="background:none;border:none;color:var(--text3,#888);font-size:22px;cursor:pointer;line-height:1;padding:0 4px;">&times;</button>
+    </div>
+    <div id="coinChartLoading" class="loading">Loading chart...</div>
+    <div style="height:280px;position:relative;">
+      <canvas id="coinChartCanvas" style="display:none;"></canvas>
+    </div>
+  </div>
+</div>
 </body>
 </html>
