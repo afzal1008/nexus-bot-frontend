@@ -1033,9 +1033,43 @@ async function loadGainersLosers() {
 }
 
 // ═══════════════════════════════════════════════════════
-// COIN CHART MODAL (click a Top Gainer / Top Loser row)
+// COIN CHART MODAL (click a Top Gainer / Top Loser row, or an Open Position)
 // ═══════════════════════════════════════════════════════
 let coinChartInstance = null;
+
+// Base pairs we already know the CoinGecko id for — avoids a search call for the common cases
+const KNOWN_COINGECKO_IDS = {
+  BTC: 'bitcoin', ETH: 'ethereum', BNB: 'binancecoin', SOL: 'solana', XRP: 'ripple'
+};
+
+// Resolve a "BTC/USDT"-style symbol to its CoinGecko id, live-searching + caching for anything not known
+async function resolveCoinId(symbol) {
+  const base = symbol.split('/')[0].toUpperCase();
+  if (KNOWN_COINGECKO_IDS[base]) return KNOWN_COINGECKO_IDS[base];
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/search?query=${base}`);
+    const data = await res.json();
+    const coins = data.coins || [];
+    const match = coins.find(c => (c.symbol || '').toUpperCase() === base) || coins[0];
+    if (match && match.id) {
+      KNOWN_COINGECKO_IDS[base] = match.id;
+      return match.id;
+    }
+  } catch (e) { console.warn('Coin id lookup failed for', symbol, e); }
+  return null;
+}
+
+// Entry point for anywhere that only has a "BTC/USDT"-style symbol (e.g. Open Positions),
+// as opposed to the gainers/losers list which already has the CoinGecko id handy.
+async function showCoinChartBySymbol(symbol) {
+  const base = symbol.split('/')[0].toUpperCase();
+  const id = await resolveCoinId(symbol);
+  if (!id) {
+    alert('Chart not available for ' + symbol);
+    return;
+  }
+  showCoinChart(id, base);
+}
 
 async function showCoinChart(coinId, symbolLabel) {
   const modal = document.getElementById('coinChartModal');
@@ -1305,7 +1339,7 @@ async function loadOpenTrades() {
         const sig = t.signal;
         const slPrice = t.stop_loss_price ? '$'+Number(t.stop_loss_price).toLocaleString(undefined,{maximumFractionDigits:4}) : '—';
         const tpPrice = t.take_profit_price ? '$'+Number(t.take_profit_price).toLocaleString(undefined,{maximumFractionDigits:4}) : '—';
-        return `<tr>
+        return `<tr onclick="showCoinChartBySymbol('${t.symbol}')" style="cursor:pointer">
           <td><strong>${t.symbol}</strong></td>
           <td><span class="signal-badge badge-${sig}">${sig.toUpperCase()}</span></td>
           <td class="mono">$${Number(t.price).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
@@ -1314,7 +1348,7 @@ async function loadOpenTrades() {
           <td class="mono" style="font-size:12px;color:var(--danger)">${slPrice}</td>
           <td class="mono" style="font-size:12px;color:var(--success)">${tpPrice}</td>
           <td style="font-size:11px;color:var(--text3)">${new Date(t.created_at).toLocaleTimeString()}</td>
-          <td><button class="btn btn-danger" style="font-size:11px;padding:4px 10px" onclick="closeTrade('${t.id}')">Close</button></td>
+          <td><button class="btn btn-danger" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();closeTrade('${t.id}')">Close</button></td>
         </tr>`;
       }).join('') + '</tbody></table>';
   } catch(e) {
