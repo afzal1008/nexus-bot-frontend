@@ -296,6 +296,18 @@
       <label class="form-label">Password</label>
       <input class="form-input" type="password" id="regPassword" placeholder="Min 8 characters">
     </div>
+    <div class="form-group" style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;">
+      <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px;">
+        <strong>Trading Risk Disclosure:</strong> Nexus Bot uses automated technical analysis to generate trading signals.
+        This is an algorithmic tool, not a licensed financial advisor, and signals may be wrong or delayed.
+        Cryptocurrency trading carries a high risk of loss. You are solely responsible for all trading activity
+        and any resulting gains or losses. Nexus Bot does not hold, custody, or have withdrawal access to your funds.
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text1);cursor:pointer;">
+        <input type="checkbox" id="regConsent" style="margin-top:2px;">
+        <span>I have read and understand this disclosure and accept full responsibility for my trading activity.</span>
+      </label>
+    </div>
     <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="doRegister()">Create account</button>
     <div class="divider"><div class="divider-line"></div><div class="divider-text">or</div><div class="divider-line"></div></div>
     <button class="google-btn" onclick="doGoogleLogin()">
@@ -849,12 +861,14 @@ async function doRegister() {
   const name  = document.getElementById('regName').value;
   const email = document.getElementById('regEmail').value;
   const pass  = document.getElementById('regPassword').value;
+  const consentAccepted = document.getElementById('regConsent').checked;
   const alertEl = document.getElementById('registerAlert');
   alertEl.innerHTML = '';
   if(!name||!email||!pass) return alertEl.innerHTML='<div class="alert alert-error">Please fill all fields</div>';
+  if(!consentAccepted) return alertEl.innerHTML='<div class="alert alert-error">Please accept the trading risk disclosure to continue</div>';
   alertEl.innerHTML='<div class="alert alert-info">⏳ Creating account... please wait up to 60 seconds on first load.</div>';
   try {
-    const data = await apiCall('/auth/register','POST',{email,password:pass,full_name:name},false);
+    const data = await apiCall('/auth/register','POST',{email,password:pass,full_name:name,consent_accepted:consentAccepted},false);
     token = data.access_token;
     localStorage.setItem('nexus_token', token);
     currentUser = data.user;
@@ -1011,6 +1025,7 @@ async function loadGainersLosers() {
     const res = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h');
     const data = await res.json();
     allMarketData = data;
+    populateManualPairDropdown(data);
     const sorted = [...data].sort((a,b) => b.price_change_percentage_24h - a.price_change_percentage_24h);
     const gainers = sorted.slice(0, 5);
     const losers  = sorted.filter(t => t.price_change_percentage_24h < 0).slice(-5).reverse();
@@ -1071,12 +1086,28 @@ async function showCoinChartBySymbol(symbol) {
   showCoinChart(id, base);
 }
 
+// Quick paper Buy/Sell — usable from anywhere that has a "BTC/USDT"-style symbol:
+// Top Gainers/Losers, the chart modal, Signal Engine Status, Recent Signals, Full Market.
+async function quickTrade(symbol, action) {
+  const amount = (currentUser && currentUser.trade_amount_usdt) ? currentUser.trade_amount_usdt : 500;
+  if (!confirm(`${action.toUpperCase()} ${symbol} for $${amount} (paper trade)?`)) return;
+  try {
+    const res = await apiCall('/trades/manual', 'POST', { symbol, action, amount_usdt: amount });
+    alert('✅ ' + (res.message || (action.toUpperCase() + ' executed')));
+    if (typeof loadOpenTrades === 'function') loadOpenTrades();
+    if (typeof loadTrades === 'function') loadTrades();
+  } catch(e) {
+    alert('❌ ' + e.message);
+  }
+}
+
 async function showCoinChart(coinId, symbolLabel) {
   const modal = document.getElementById('coinChartModal');
   const titleEl = document.getElementById('coinChartTitle');
   const loadingEl = document.getElementById('coinChartLoading');
   const canvas = document.getElementById('coinChartCanvas');
 
+  window.currentChartPair = symbolLabel + '/USDT';
   titleEl.textContent = symbolLabel + '/USDT — 7 Day Chart';
   loadingEl.style.display = 'block';
   loadingEl.textContent = 'Loading chart...';
@@ -1139,23 +1170,45 @@ function closeCoinChart() {
   if (coinChartInstance) { coinChartInstance.destroy(); coinChartInstance = null; }
 }
 
+function populateManualPairDropdown(data) {
+  const sel = document.getElementById('manualPair');
+  if (!sel || !data.length) return;
+  const currentValue = sel.value;
+  const options = data.slice(0, 100).map(t => {
+    const sym = (t.symbol || '').toUpperCase();
+    return `<option value="${sym}/USDT">${sym}/USDT</option>`;
+  }).join('');
+  sel.innerHTML = options;
+  // Keep the previously selected pair if it's still in the new list, else default to BTC/USDT
+  if ([...sel.options].some(o => o.value === currentValue)) {
+    sel.value = currentValue;
+  } else {
+    sel.value = 'BTC/USDT';
+  }
+}
+
 function renderMarketTable(data) {
   const wrap = document.getElementById('marketTableWrap');
   if (!data.length) { wrap.innerHTML = '<div class="loading">No data</div>'; return; }
   const rows = data.slice(0, 100).map(t => {
     const chg = t.price_change_percentage_24h || 0;
     const sym = (t.symbol || '').toUpperCase();
+    const pair = sym + '/USDT';
     const vol = ((t.total_volume||0)/1e6).toFixed(1);
     return `<tr>
-      <td><strong>${sym}</strong><span style="color:var(--text3);font-size:11px">/USDT</span></td>
+      <td style="cursor:pointer" onclick="showCoinChart('${t.id}','${sym}')"><strong>${sym}</strong><span style="color:var(--text3);font-size:11px">/USDT</span></td>
       <td class="mono">$${(t.current_price||0).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
       <td style="color:${chg>=0?'var(--success)':'var(--danger)'}">${chg>=0?'▲ +':'▼ '}${chg.toFixed(2)}%</td>
       <td class="mono" style="font-size:12px;color:var(--text3)">$${vol}M</td>
+      <td style="white-space:nowrap">
+        <button class="btn" style="font-size:10px;padding:3px 8px;background:rgba(0,212,170,0.15);color:var(--success);border:1px solid rgba(0,212,170,0.4)" onclick="quickTrade('${pair}','buy')">▲ Buy</button>
+        <button class="btn" style="font-size:10px;padding:3px 8px;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4);margin-left:4px" onclick="quickTrade('${pair}','sell')">▼ Sell</button>
+      </td>
     </tr>`;
   }).join('');
   wrap.innerHTML = `<div style="max-height:400px;overflow-y:auto">
     <table class="trade-table">
-      <thead><tr><th>Pair</th><th>Price</th><th>24h Change</th><th>Volume</th></tr></thead>
+      <thead><tr><th>Pair</th><th>Price</th><th>24h Change</th><th>Volume</th><th>Trade</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
 }
@@ -1193,18 +1246,25 @@ async function loadDashboard() {
     // Recent signals
     const list = document.getElementById('recentSignalsList');
     if(!data.recent_signals.length) { list.innerHTML = '<div class="loading">No signals yet</div>'; return; }
-    list.innerHTML = data.recent_signals.map(s => `
-      <div class="signal-row">
-        <div class="signal-badge badge-${s.signal}">${s.signal.toUpperCase()}</div>
+    list.innerHTML = data.recent_signals.map(s => {
+      const sig = (s.signal||'hold').toLowerCase();
+      const tradeBtn = sig==='buy'
+        ? `<button class="btn" style="font-size:10px;padding:3px 8px;background:rgba(0,212,170,0.15);color:var(--success);border:1px solid rgba(0,212,170,0.4);margin-left:8px" onclick="event.stopPropagation();quickTrade('${s.symbol}','buy')">▲ BUY</button>`
+        : sig==='sell'
+        ? `<button class="btn" style="font-size:10px;padding:3px 8px;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4);margin-left:8px" onclick="event.stopPropagation();quickTrade('${s.symbol}','sell')">▼ SELL</button>`
+        : '';
+      return `
+      <div class="signal-row" style="cursor:pointer" onclick="showCoinChartBySymbol('${s.symbol}')">
+        <div class="signal-badge badge-${sig}">${sig.toUpperCase()}</div>
         <div>
-          <div class="signal-pair">${s.symbol}</div>
+          <div class="signal-pair">${s.symbol}${tradeBtn}</div>
           <div class="conf-bar"><div class="conf-fill" style="width:${s.confidence||0}%"></div></div>
         </div>
         <div style="text-align:right">
           <div class="signal-conf">${s.confidence||0}%</div>
           <div class="signal-time">${new Date(s.created_at).toLocaleTimeString()}</div>
         </div>
-      </div>`).join('');
+      </div>`;}).join('');
 
     // Load charts + gainers/losers
     loadCharts();
@@ -1252,18 +1312,24 @@ async function loadSignals() {
         <div style="font-size:13px;font-weight:600;color:var(--accent)">⚡ ${actionable.length} Actionable Signal${actionable.length>1?'s':''} — Manual traders: act on BUY/SELL signals below</div>
       </div>` : '') +
     `<table class="trade-table">
-      <thead><tr><th>Pair</th><th>Signal</th><th>Confidence</th><th>Price</th><th>RSI</th><th>BB Position</th><th>Time</th></tr></thead>
+      <thead><tr><th>Pair</th><th>Signal</th><th>Confidence</th><th>Price</th><th>RSI</th><th>BB Position</th><th>Time</th><th>Trade</th></tr></thead>
       <tbody>` + displayTrades.map(t => {
         const sig = (t.signal||'hold').toLowerCase();
         const rowStyle = sig==='buy' ? 'background:rgba(0,212,170,0.04)' : sig==='sell' ? 'background:rgba(255,77,109,0.04)' : '';
+        const tradeBtn = sig==='buy'
+          ? `<button class="btn" style="font-size:11px;padding:4px 10px;background:rgba(0,212,170,0.15);color:var(--success);border:1px solid rgba(0,212,170,0.4)" onclick="quickTrade('${t.symbol}','buy')">▲ BUY</button>`
+          : sig==='sell'
+          ? `<button class="btn" style="font-size:11px;padding:4px 10px;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4)" onclick="quickTrade('${t.symbol}','sell')">▼ SELL</button>`
+          : `<span style="color:var(--text3);font-size:12px">—</span>`;
         return `<tr style="${rowStyle}">
-        <td><strong>${t.symbol}</strong></td>
+        <td style="cursor:pointer" onclick="showCoinChartBySymbol('${t.symbol}')"><strong>${t.symbol}</strong></td>
         <td><span class="signal-badge badge-${sig}" style="font-size:13px;padding:4px 10px">${sig.toUpperCase()}</span></td>
         <td><div style="display:flex;align-items:center;gap:8px"><div class="conf-bar" style="width:60px"><div class="conf-fill" style="width:${t.confidence||0}%;background:${sig==='buy'?'var(--success)':sig==='sell'?'var(--danger)':'var(--warn)'}"></div></div><span style="font-size:12px">${t.confidence||0}%</span></div></td>
         <td class="mono" style="font-size:13px">$${Number(t.entry_price||0).toFixed(2)}</td>
         <td class="mono" style="font-size:12px;color:${(t.rsi||50)<35?'var(--success)':(t.rsi||50)>65?'var(--danger)':'var(--text2)'}">${t.rsi ? Number(t.rsi).toFixed(1) : '—'}</td>
         <td style="font-size:12px;color:var(--text2)">${t.bb_position||'—'}</td>
         <td style="font-size:11px;color:var(--text3)">${new Date(t.created_at).toLocaleTimeString()}</td>
+        <td>${tradeBtn}</td>
       </tr>`;}).join('') + '</tbody></table>';
   } catch(e) { el.innerHTML=`<div class="loading" style="color:var(--danger)">${e.message}</div>`; }
 }
@@ -1663,6 +1729,10 @@ init();
     <div id="coinChartLoading" class="loading">Loading chart...</div>
     <div style="height:280px;position:relative;">
       <canvas id="coinChartCanvas" style="display:none;"></canvas>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:16px;">
+      <button class="btn" style="flex:1;background:rgba(0,212,170,0.15);color:var(--success);border:1px solid rgba(0,212,170,0.4);padding:10px;font-weight:700" onclick="quickTrade(window.currentChartPair,'buy')">▲ BUY</button>
+      <button class="btn" style="flex:1;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4);padding:10px;font-weight:700" onclick="quickTrade(window.currentChartPair,'sell')">▼ SELL</button>
     </div>
   </div>
 </div>
