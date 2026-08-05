@@ -1024,8 +1024,8 @@ async function loadGainersLosers() {
   try {
     const res = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h');
     const data = await res.json();
-    allMarketData = data;
-    populateManualPairDropdown(data);
+    allMarketData = data.slice().sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
+    populateManualPairDropdown(allMarketData);
     const sorted = [...data].sort((a,b) => b.price_change_percentage_24h - a.price_change_percentage_24h);
     const gainers = sorted.slice(0, 5);
     const losers  = sorted.filter(t => t.price_change_percentage_24h < 0).slice(-5).reverse();
@@ -1478,6 +1478,16 @@ setInterval(() => {
     loadTrades();
   }
 }, 24 * 60 * 60 * 1000); // 24 hours
+
+// Auto-refresh Full Market / Top Gainers / Top Losers every 60 seconds while the
+// Dashboard tab is open, so the 24h-change sort order stays live instead of only
+// updating whenever the page happens to reload.
+setInterval(() => {
+  const dashTab = document.getElementById('tab-dashboard');
+  if (dashTab && dashTab.classList.contains('active')) {
+    loadGainersLosers();
+  }
+}, 60 * 1000); // 60 seconds
 
 // ═══════════════════════════════════════════════════════
 // EXCHANGE
