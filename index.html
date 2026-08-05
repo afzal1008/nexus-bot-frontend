@@ -1088,11 +1088,13 @@ async function showCoinChartBySymbol(symbol) {
 
 // Quick paper Buy/Sell — usable from anywhere that has a "BTC/USDT"-style symbol:
 // Top Gainers/Losers, the chart modal, Signal Engine Status, Recent Signals, Full Market.
-async function quickTrade(symbol, action) {
+async function quickTrade(symbol, action, coinId) {
   const amount = (currentUser && currentUser.trade_amount_usdt) ? currentUser.trade_amount_usdt : 500;
   if (!confirm(`${action.toUpperCase()} ${symbol} for $${amount} (paper trade)?`)) return;
   try {
-    const res = await apiCall('/trades/manual', 'POST', { symbol, action, amount_usdt: amount });
+    const body = { symbol, action, amount_usdt: amount };
+    if (coinId) body.coingecko_id = coinId;  // pass the exact coin when known — avoids symbol collisions (e.g. "PUMP")
+    const res = await apiCall('/trades/manual', 'POST', body);
     alert('✅ ' + (res.message || (action.toUpperCase() + ' executed')));
     if (typeof loadOpenTrades === 'function') loadOpenTrades();
     if (typeof loadTrades === 'function') loadTrades();
@@ -1108,6 +1110,7 @@ async function showCoinChart(coinId, symbolLabel) {
   const canvas = document.getElementById('coinChartCanvas');
 
   window.currentChartPair = symbolLabel + '/USDT';
+  window.currentChartCoinId = coinId;
   titleEl.textContent = symbolLabel + '/USDT — 7 Day Chart';
   loadingEl.style.display = 'block';
   loadingEl.textContent = 'Loading chart...';
@@ -1201,8 +1204,8 @@ function renderMarketTable(data) {
       <td style="color:${chg>=0?'var(--success)':'var(--danger)'}">${chg>=0?'▲ +':'▼ '}${chg.toFixed(2)}%</td>
       <td class="mono" style="font-size:12px;color:var(--text3)">$${vol}M</td>
       <td style="white-space:nowrap">
-        <button class="btn" style="font-size:10px;padding:3px 8px;background:rgba(0,212,170,0.15);color:var(--success);border:1px solid rgba(0,212,170,0.4)" onclick="quickTrade('${pair}','buy')">▲ Buy</button>
-        <button class="btn" style="font-size:10px;padding:3px 8px;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4);margin-left:4px" onclick="quickTrade('${pair}','sell')">▼ Sell</button>
+        <button class="btn" style="font-size:10px;padding:3px 8px;background:rgba(0,212,170,0.15);color:var(--success);border:1px solid rgba(0,212,170,0.4)" onclick="quickTrade('${pair}','buy','${t.id}')">▲ Buy</button>
+        <button class="btn" style="font-size:10px;padding:3px 8px;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4);margin-left:4px" onclick="quickTrade('${pair}','sell','${t.id}')">▼ Sell</button>
       </td>
     </tr>`;
   }).join('');
@@ -1660,7 +1663,7 @@ function renderPlanFeatures() {
   planWrap.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="card2"><div class="stat-label">Current Plan</div><div style="font-size:18px;font-weight:700;color:var(--accent)">${f.name}</div></div>
-      <div class="card2"><div class="stat-label">Auto Execution</div><div style="font-size:18px;font-weight:700;color:${f.exec?'var(--success)':'var(--danger)'}">${f.exec?'✓ Enabled':'✗ Disabled'}</div></div>
+      <div class="card2"><div class="stat-label">Auto Execution (Plan Feature)</div><div style="font-size:18px;font-weight:700;color:${f.exec?'var(--success)':'var(--danger)'}">${f.exec?'✓ Available on your plan':'✗ Not on your plan'}</div></div>
       <div class="card2"><div class="stat-label">Signal Engine</div><div style="font-size:14px;font-weight:600">${f.indicators}</div></div>
       <div class="card2"><div class="stat-label">Trading Pairs</div><div style="font-size:13px;font-weight:500">${f.pairs}</div></div>
     </div>
@@ -1741,8 +1744,8 @@ init();
       <canvas id="coinChartCanvas" style="display:none;"></canvas>
     </div>
     <div style="display:flex;gap:12px;margin-top:16px;">
-      <button class="btn" style="flex:1;background:rgba(0,212,170,0.15);color:var(--success);border:1px solid rgba(0,212,170,0.4);padding:10px;font-weight:700" onclick="quickTrade(window.currentChartPair,'buy')">▲ BUY</button>
-      <button class="btn" style="flex:1;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4);padding:10px;font-weight:700" onclick="quickTrade(window.currentChartPair,'sell')">▼ SELL</button>
+      <button class="btn" style="flex:1;background:rgba(0,212,170,0.15);color:var(--success);border:1px solid rgba(0,212,170,0.4);padding:10px;font-weight:700" onclick="quickTrade(window.currentChartPair,'buy',window.currentChartCoinId)">▲ BUY</button>
+      <button class="btn" style="flex:1;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4);padding:10px;font-weight:700" onclick="quickTrade(window.currentChartPair,'sell',window.currentChartCoinId)">▼ SELL</button>
     </div>
   </div>
 </div>
