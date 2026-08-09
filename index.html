@@ -1173,13 +1173,19 @@ function closeCoinChart() {
   if (coinChartInstance) { coinChartInstance.destroy(); coinChartInstance = null; }
 }
 
+// Maps "SYMBOL/USDT" -> the exact CoinGecko id, so manual trades never have to
+// re-guess a colliding symbol (e.g. "BEAT" matches several unrelated coins).
+window.manualPairIdMap = window.manualPairIdMap || {};
+
 function populateManualPairDropdown(data) {
   const sel = document.getElementById('manualPair');
   if (!sel || !data.length) return;
   const currentValue = sel.value;
   const options = data.slice(0, 100).map(t => {
     const sym = (t.symbol || '').toUpperCase();
-    return `<option value="${sym}/USDT">${sym}/USDT</option>`;
+    const pair = sym + '/USDT';
+    window.manualPairIdMap[pair] = t.id;
+    return `<option value="${pair}">${pair}</option>`;
   }).join('');
   sel.innerHTML = options;
   // Keep the previously selected pair if it's still in the new list, else default to BTC/USDT
@@ -1377,11 +1383,10 @@ async function executeTrade(action) {
   alertEl.innerHTML = `<div class="alert alert-info">⏳ Executing ${action.toUpperCase()} order for ${pair}...</div>`;
 
   try {
-    const res = await apiCall('/trades/manual', 'POST', {
-      symbol: pair,
-      action: action,
-      amount_usdt: amount
-    });
+    const body = { symbol: pair, action: action, amount_usdt: amount };
+    const coinId = window.manualPairIdMap && window.manualPairIdMap[pair];
+    if (coinId) body.coingecko_id = coinId;  // pass the exact coin — avoids symbol collisions (e.g. "BEAT")
+    const res = await apiCall('/trades/manual', 'POST', body);
     const color = action === 'buy' ? 'alert-success' : 'alert-error';
     alertEl.innerHTML = `<div class="alert ${color}">${res.message}<br>
       <span style="font-size:12px;opacity:0.8">Qty: ${res.quantity.toFixed(6)} · Price: $${res.price.toLocaleString(undefined,{maximumFractionDigits:2})}</span>
