@@ -798,9 +798,18 @@ function showPage(id) {
 async function apiCall(endpoint, method='GET', body=null, auth=true, attempt=1) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open(method, API + endpoint, true);
+    // Cache-bust GET requests so the browser can never silently reuse a stale
+    // response (e.g. an old "bot_enabled: false" for /dashboard/summary) instead
+    // of hitting the server fresh — this was causing stale data on some pages.
+    let url = API + endpoint;
+    if (method === 'GET') {
+      url += (url.includes('?') ? '&' : '?') + '_ts=' + Date.now();
+    }
+    xhr.open(method, url, true);
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.setRequestHeader('Accept', 'application/json');
+    xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    xhr.setRequestHeader('Pragma', 'no-cache');
     if(auth && token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
     xhr.timeout = 60000;
 
