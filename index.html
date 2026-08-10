@@ -1042,7 +1042,7 @@ async function loadGainersLosers() {
     const renderRow = (t, color) => {
       const chg = t.price_change_percentage_24h || 0;
       return `<div onclick="showCoinChart('${t.id}','${t.symbol.toUpperCase()}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
-        <div style="font-weight:600;font-size:13px">${t.symbol.toUpperCase()}/USDT</div>
+        <div style="font-weight:600;font-size:13px">${t.symbol.toUpperCase()}/USDT <span style="color:var(--text3);font-size:10px;background:rgba(255,255,255,0.06);padding:1px 6px;border-radius:4px;font-weight:400">${dataSourceLabel(t.symbol)}</span></div>
         <div style="text-align:right">
           <div style="font-size:13px;font-family:var(--mono)">$${t.current_price.toLocaleString(undefined,{maximumFractionDigits:4})}</div>
           <div style="font-size:11px;color:${color}">${chg >= 0 ? '▲ +' : '▼ '}${chg.toFixed(2)}%</div>
@@ -1065,6 +1065,15 @@ let coinChartInstance = null;
 const KNOWN_COINGECKO_IDS = {
   BTC: 'bitcoin', ETH: 'ethereum', BNB: 'binancecoin', SOL: 'solana', XRP: 'ripple'
 };
+
+// These 5 pairs get their live price from Kraken; every other coin (top gainers,
+// full market, anything else) comes from CoinGecko. Shown next to the coin name
+// so it's clear where each price is actually sourced from.
+const KRAKEN_BASE_PAIRS = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT'];
+function dataSourceLabel(symbolOrPair) {
+  const pair = symbolOrPair.includes('/') ? symbolOrPair.toUpperCase() : symbolOrPair.toUpperCase() + '/USDT';
+  return KRAKEN_BASE_PAIRS.includes(pair) ? 'Kraken' : 'CoinGecko';
+}
 
 // Resolve a "BTC/USDT"-style symbol to its CoinGecko id, live-searching + caching for anything not known
 async function resolveCoinId(symbol) {
@@ -1194,7 +1203,7 @@ function populateManualPairDropdown(data) {
     const sym = (t.symbol || '').toUpperCase();
     const pair = sym + '/USDT';
     window.manualPairIdMap[pair] = t.id;
-    return `<option value="${pair}">${pair}</option>`;
+    return `<option value="${pair}">${pair} — ${dataSourceLabel(pair)}</option>`;
   }).join('');
   sel.innerHTML = options;
   // Keep the previously selected pair if it's still in the new list, else default to BTC/USDT
@@ -1214,7 +1223,7 @@ function renderMarketTable(data) {
     const pair = sym + '/USDT';
     const vol = ((t.total_volume||0)/1e6).toFixed(1);
     return `<tr>
-      <td style="cursor:pointer" onclick="showCoinChart('${t.id}','${sym}')"><strong>${sym}</strong><span style="color:var(--text3);font-size:11px">/USDT</span></td>
+      <td style="cursor:pointer" onclick="showCoinChart('${t.id}','${sym}')"><strong>${sym}</strong><span style="color:var(--text3);font-size:11px">/USDT</span> <span style="color:var(--text3);font-size:10px;background:rgba(255,255,255,0.06);padding:1px 6px;border-radius:4px">${dataSourceLabel(pair)}</span></td>
       <td class="mono">$${(t.current_price||0).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
       <td style="color:${chg>=0?'var(--success)':'var(--danger)'}">${chg>=0?'▲ +':'▼ '}${chg.toFixed(2)}%</td>
       <td class="mono" style="font-size:12px;color:var(--text3)">$${vol}M</td>
@@ -1275,7 +1284,7 @@ async function loadDashboard() {
       <div class="signal-row" style="cursor:pointer" onclick="showCoinChartBySymbol('${s.symbol}')">
         <div class="signal-badge badge-${sig}">${sig.toUpperCase()}</div>
         <div>
-          <div class="signal-pair">${s.symbol}${tradeBtn}</div>
+          <div class="signal-pair">${s.symbol} <span style="color:var(--text3);font-size:10px;background:rgba(255,255,255,0.06);padding:1px 6px;border-radius:4px;font-weight:400">${dataSourceLabel(s.symbol)}</span>${tradeBtn}</div>
           <div class="conf-bar"><div class="conf-fill" style="width:${s.confidence||0}%"></div></div>
         </div>
         <div style="text-align:right">
@@ -1340,7 +1349,7 @@ async function loadSignals() {
           ? `<button class="btn" style="font-size:11px;padding:4px 10px;background:rgba(255,77,109,0.15);color:var(--danger);border:1px solid rgba(255,77,109,0.4)" onclick="quickTrade('${t.symbol}','sell')">▼ SELL</button>`
           : `<span style="color:var(--text3);font-size:12px">—</span>`;
         return `<tr style="${rowStyle}">
-        <td style="cursor:pointer" onclick="showCoinChartBySymbol('${t.symbol}')"><strong>${t.symbol}</strong></td>
+        <td style="cursor:pointer" onclick="showCoinChartBySymbol('${t.symbol}')"><strong>${t.symbol}</strong> <span style="color:var(--text3);font-size:10px;background:rgba(255,255,255,0.06);padding:1px 6px;border-radius:4px">${dataSourceLabel(t.symbol)}</span></td>
         <td><span class="signal-badge badge-${sig}" style="font-size:13px;padding:4px 10px">${sig.toUpperCase()}</span></td>
         <td><div style="display:flex;align-items:center;gap:8px"><div class="conf-bar" style="width:60px"><div class="conf-fill" style="width:${t.confidence||0}%;background:${sig==='buy'?'var(--success)':sig==='sell'?'var(--danger)':'var(--warn)'}"></div></div><span style="font-size:12px">${t.confidence||0}%</span></div></td>
         <td class="mono" style="font-size:13px">$${Number(t.entry_price||0).toFixed(2)}</td>
